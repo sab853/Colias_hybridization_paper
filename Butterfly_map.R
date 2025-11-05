@@ -9,7 +9,7 @@ api_secret <-"" #insert unique API code here
 register_google(key = api_secret)
 
 #Read excel
-Fieldwork_datasheet <- read_excel("Fieldwork datasheet .xlsx")
+Fieldwork_datasheet <- read_excel(Fieldwork_datasheet_2024)
 View(Fieldwork_datasheet)
 
 #Butterfly map
