@@ -1,0 +1,38 @@
+#min and max for each 12 park
+#Included park names
+library(dplyr)
+library(geosphere)
+Fieldwork_datasheet <- data.frame(
+  park_number = c('York University', 'Centennial Park', 'Marie Curtis Park', 'Rowntree Mills Park', 'Morningside Park', 'Raymore Park',
+                  'UOFT Scarborough', 'Lambton woods', 'Ashbridge Bay', 'Sunnybrook Park', 'Downsview Park', 'Jack Goodlad'),
+  Latitude = c(43.771289, 43.654407, 43.586443, 43.7505449, 43.7786512, 43.6942802, 
+               43.7797746, 43.6641906, 43.6595815, 43.7242016, 43.7422736, 43.7434777),
+  Longitude = c(-79.506077, -79.589672, -79.5447338, -79.5724347, -79.1946797, -79.5134948, 
+                -79.1876933, -79.5091923, -79.30806, -79.3573391, -79.4783759, -79.2705279)
+)
+
+# coordinate matrix 
+coords <- Fieldwork_datasheet %>%
+  select(Longitude, Latitude) %>%
+  as.matrix()
+
+# Matrix (convert to km)
+dist_matrix_meters <- distm(coords, fun = distHaversine)
+dist_matrix_km <- dist_matrix_meters / 1000
+
+#  row/column names 
+colnames(dist_matrix_km) <- paste0("Park_", 1:ncol(dist_matrix_km))
+rownames(dist_matrix_km) <- paste0("Park_", 1:nrow(dist_matrix_km))
+
+# Summary per park
+summary_results <- data.frame(
+  Park_Name    = Fieldwork_datasheet$park_number, 
+  Min_Dist_km  = apply(dist_matrix_km, 1, function(x) min(x[x > 0])),
+  Max_Dist_km  = apply(dist_matrix_km, 1, max)
+)
+summary_results$Closest_Park <- Fieldwork_datasheet$park_number[apply(dist_matrix_km, 1, function(x) which(x == min(x[x > 0])))]
+summary_results$Furthest_Park <- Fieldwork_datasheet$park_number[apply(dist_matrix_km, 1, which.max)]
+
+#Results
+print("--- Summary of Min/Max Distances per Park ---")
+print(summary_results, row.names = FALSE)
