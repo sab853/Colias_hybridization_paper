@@ -1,0 +1,130 @@
+#Running distance to roads for inat data
+library(readr)
+philodiceinat <- read_csv("philodicecoordinatesinat.csv")
+eurythemeinat <- read_csv("eurythemecoordinatesinat.csv")
+View(eurythemeinat)
+
+
+#distance to roads philodice manuscript
+library(googleway)
+library(readxl)
+library(dplyr)
+library(geosphere)
+
+library(readxl)
+philodice_datasheet <- philodiceinat
+View(philodice_datasheet)
+
+name1<- philodice_datasheet$id
+lat1<- philodice_datasheet$latitude
+long1<- philodice_datasheet$longitude
+
+#trial
+mydf1philodiceinat <- data.frame(site_name = (name1),
+                    from_lat = (lat1),
+                    from_long = (long1),
+                    to_lat = (43.642342),
+                    to_long = (-79.387386))
+
+pls <- lapply(1:nrow(mydf1philodiceinat), function(x){
+  
+  foo <- google_directions(origin = unlist(mydf1philodiceinat[x, 2:3]),
+                           destination = unlist(mydf1philodiceinat[x, 4:5]),
+                           key = "AIzaSyBZ_1FGIIoQlBgotsT-hJ5nZwMYcmL6GHE",
+                           mode = "driving",
+                           simplify = TRUE)
+  
+  ## Decode the polyline into lat/lon coordinates
+  pl <- decode_pl(foo$routes$overview_polyline$points)
+  
+  return(pl)
+})
+
+closest_road<-list()
+for(i in 1:length(pls)){
+  closest_road[[i]]<-pls[[i]][1,]
+}
+
+distance_to_closest_road<-list()
+for(x in 1:nrow(mydf1philodiceinat)){
+  distance_to_closest_road[[x]]<-distm(c(unlist(mydf1philodiceinat[x,2:3])), c(unlist(closest_road[[x]])), fun=distHaversine)
+}
+
+distance_to_closest_road
+mydf1philodiceinat$distances<-unlist(distance_to_closest_road)
+
+mydf1philodiceinat
+
+#distance to roads eurytheme manuscript
+library(googleway)
+library(readxl)
+library(dplyr)
+library(geosphere)
+
+library(readxl)
+eurytheme_datasheet <- eurythemeinat
+View(eurytheme_datasheet)
+
+name2<- eurytheme_datasheet$id
+lat2<- eurytheme_datasheet$latitude
+long2<- eurytheme_datasheet$longitude
+
+#trial
+mydf2eurythemeinat <- data.frame(site_name = (name2),
+                    from_lat = (lat2),
+                    from_long = (long2),
+                    to_lat = (43.642342),
+                    to_long = (-79.387386))
+
+pls <- lapply(1:nrow(mydf2eurythemeinat), function(x){
+  
+  foo <- google_directions(origin = unlist(mydf2eurythemeinat[x, 2:3]),
+                           destination = unlist(mydf2eurythemeinat[x, 4:5]),
+                           key = "AIzaSyBZ_1FGIIoQlBgotsT-hJ5nZwMYcmL6GHE",
+                           mode = "driving",
+                           simplify = TRUE)
+  
+  ## Decode the polyline into lat/lon coordinates
+  pl <- decode_pl(foo$routes$overview_polyline$points)
+  
+  return(pl)
+})
+
+closest_road<-list()
+for(i in 1:length(pls)){
+  closest_road[[i]]<-pls[[i]][1,]
+}
+
+distance_to_closest_road<-list()
+for(x in 1:nrow(mydf2eurythemeinat)){
+  distance_to_closest_road[[x]]<-distm(c(unlist(mydf2eurythemeinat[x,2:3])), c(unlist(closest_road[[x]])), fun=distHaversine)
+}
+
+distance_to_closest_road
+mydf2eurythemeinat$distances<-unlist(distance_to_closest_road)
+
+mydf2eurythemeinat
+
+eurythemeinatdistancesmean <-mean(mydf2eurythemeinat$distances)
+philodiceinatdistancesmean <-mean(mydf1philodiceinat$distances)
+
+
+#run a independent 2 sample t test
+disttoroadinat_test <- t.test(mydf1philodiceinat$distances, mydf2eurythemeinat$distances)
+print(disttoroadinat_test)
+
+#plot
+plot_datattest <- rbind(
+  data.frame(species = "Philodice", distance = mydf1philodiceinat$distances),
+  data.frame(species = "Eurytheme", distance = mydf2eurythemeinat$distances)
+)
+
+#box plot
+ggplot(plot_datattest, aes(x = species, y = distance, fill = species)) +
+  geom_boxplot(alpha = 0.7) +
+  theme_minimal() +
+  labs( x = "Species",
+       y = "Distance to Road (meters)") +
+  scale_fill_manual(values = c("Philodice" = "gold", "Eurytheme" = "orange")) + theme(legend.position = "none")
+
+
