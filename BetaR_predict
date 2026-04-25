@@ -1,0 +1,354 @@
+#this is my script and plots for the beta regression without alba colias and no temperature
+
+library(glmmTMB)
+library(ggeffects)
+library(dplyr)
+
+
+
+library(readxl)
+butterfly_data1 <- read_excel("Fieldworkdatasheetnoalba.xlsx")
+View(butterfly_data1)
+butterfly_data1 <- as.data.frame(butterfly_data1) 
+butterfly_data1$`Classification Colour:` <- as.numeric(as.character(butterfly_data1$`Classification Colour:`))
+
+
+#change date format to Ordinal dates
+library(openxlsx)
+library(lubridate)
+dates <-  (butterfly_data1$Date)
+ordinal_date <- yday(ymd(dates))
+butterfly_data1$ordinal_date <-ordinal_date
+
+##run this for mydf1 
+library(googleway)
+library(readxl)
+library(dplyr)
+library(geosphere)
+
+library(readxl)
+Fieldwork_datasheet <- read_excel("Fieldwork datasheet .xlsx")
+View(Fieldwork_datasheet)
+
+name1<- Fieldwork_datasheet$`Park Name`
+lat1<- Fieldwork_datasheet$Latitude
+long1<- Fieldwork_datasheet$Longitude
+
+
+#trial
+mydf1 <- data.frame(site_name = (name1),
+                    from_lat = (lat1),
+                    from_long = (long1),
+                    to_lat = (43.642342),
+                    to_long = (-79.387386))
+
+pls <- lapply(1:nrow(mydf1), function(x){
+  
+  foo <- google_directions(origin = unlist(mydf1[x, 2:3]),
+                           destination = unlist(mydf1[x, 4:5]),
+                           key = "AIzaSyBZ_1FGIIoQlBgotsT-hJ5nZwMYcmL6GHE",
+                           mode = "driving",
+                           simplify = TRUE)
+  
+  ## Decode the polyline into lat/lon coordinates
+  pl <- decode_pl(foo$routes$overview_polyline$points)
+  
+  return(pl)
+})
+
+closest_road<-list()
+for(i in 1:length(pls)){
+  closest_road[[i]]<-pls[[i]][1,]
+}
+
+distance_to_closest_road<-list()
+for(x in 1:nrow(mydf1)){
+  distance_to_closest_road[[x]]<-distm(c(unlist(mydf1[x,2:3])), c(unlist(closest_road[[x]])), fun=distHaversine)
+}
+
+distance_to_closest_road
+mydf1$distances<-unlist(distance_to_closest_road)
+
+mydf1
+
+#without alba colias, remove rows 63 and 66
+mydf2 <- mydf1[-c(63, 66), ]
+print(mydf2)
+
+
+
+proportion_orange <-if ("Classification Colour:" %in% colnames(butterfly_data1)) {
+  butterfly_data1$proportion_orange <- (butterfly_data1$`Classification Colour:` - 1) / 9
+  butterfly_data1$proportion_orange <- pmin(pmax(butterfly_data1$proportion_orange, 0), 1)
+  print(butterfly_data1[c("Classification Colour:", "proportion_orange")])
+} else {
+  stop("Column 'Classification Colour:' not found in the dataset.")
+}
+
+if ("Classification Colour:" %in% colnames(butterfly_data1)) {
+  # Normalize  scale (1-10) to (0, 1)
+  butterfly_data1$proportion_orange <- (butterfly_data1$`Classification Colour:` - 1) / 9
+  
+  # values
+  print(butterfly_data1[c("Classification Colour:", "proportion_orange")])
+} else {
+  stop("Column 'Classification Colour:' not found in the dataset.")
+}
+
+butterfly_data1$proportion_orange <- proportion_orange[,2]
+
+if(length(ordinal_date) == nrow(butterfly_data1)) {
+  
+  butterfly_data1$ordinal_date <- ordinal_date
+} else {
+  # If lengths do not match, trim or adjust the ordinal_date vector
+  ordinal_date <- ordinal_date[1:nrow(butterfly_data1)]
+  butterfly_data1$ordinal_date <- ordinal_date
+}
+
+butterfly_data1$distances <-mydf2$distances
+
+
+butterfly_data1$proportion_orange <- (butterfly_data1$`Classification Colour:` - 1) / 9
+butterfly_data1$proportion_orange <- pmin(pmax(butterfly_data1$proportion_orange, 0.00001), 0.99999)
+
+# values (0, 1)
+butterfly_data1$proportion_orange <- pmax(pmin(butterfly_data1$proportion_orange, 0.99999), 0.00001)
+
+
+butterfly_data1[,c(1:19, 21:26)]->butterfly_data_clean1
+names(butterfly_data_clean1)[names(butterfly_data_clean1) == "park number"] <- "park_number"
+
+#scale variables
+butterfly_data_clean1$scaled_distances <- scale(butterfly_data_clean1$distances)
+butterfly_data_clean1$scaled_pop_density <- scale(butterfly_data_clean1$`Density population km2`)
+butterfly_data_clean1$scaled_2021_pop <- scale(butterfly_data_clean1$`2021 population`)
+butterfly_data_clean1$scaled_distance_tree <- scale(butterfly_data_clean1$`Distance to nearest tree (m):`)
+butterfly_data_clean1$scaled_pedestrians <- scale(butterfly_data_clean1$`Pedestrians observed:`)
+butterfly_data_clean1$scaled_ordinal <- scale(butterfly_data_clean1$ordinal_date)
+
+# Fit with scaled variables, regular beta
+set.seed(123)
+beta_orange3_scaled <- glmmTMB(
+  proportion_orange ~ scaled_distances + scaled_pop_density + scaled_ordinal + scaled_2021_pop + 
+    scaled_distance_tree + scaled_pedestrians +
+    (1 | park_number),
+  data = butterfly_data_clean1,
+  family = beta_family(link = "logit"), 
+  na.action = na.omit
+)
+summary(beta_orange3_scaled)
+
+
+
+
+# r2 values
+library(MuMIn)
+r2_values <- r.squaredGLMM(beta_orange3_scaled)
+print(r2_values)
+#57% of the variance in the dependent variable.(r2m)
+#60% of variance r2c
+
+#magnitude of random effect 
+random_effect_variance <- VarCorr(beta_orange3_scaled)
+print(random_effect_variance)
+
+#correlation test for pedestrians and pop_density
+cor_test_pedpop <- cor.test(butterfly_data_clean1$scaled_pop_density, 
+                            butterfly_data_clean1$scaled_pedestrians, 
+                            method = "pearson")
+print(cor_test_pedpop)
+
+
+#plots these are updated to proportion orange
+library(ggplot2)
+plot1<- ggplot(butterfly_data_clean1, aes(x =scaled_distances, y = proportion_orange)) +
+  geom_jitter(size = 4, shape = 21, width = 0.05, height = 0.02) +
+  geom_smooth(method=lm, colour="red", linetype= "solid")+
+  labs(
+    x = "Scaled Distance to Road",
+    y = "Scaled level of orange pigmentation" )+ 
+  theme_bw() 
+plot1
+
+plot2<- ggplot(butterfly_data_clean1, aes(x =scaled_pop_density, (y = proportion_orange))) +
+  geom_jitter(size = 4, shape = 21, width = 0.05, height = 0.02) +
+  geom_smooth(method=lm, colour="red", linetype= "dotted")+
+  labs(
+    x = "Scaled Population density (km^2)",
+    y = "Scaled level of orange pigmentation", ) +
+  theme_bw() 
+plot2
+
+
+plot3<- ggplot(butterfly_data_clean1, aes(x =scaled_ordinal, (y =proportion_orange))) +
+  geom_jitter(size = 4, shape = 21, width = 0.05, height = 0.02)  +
+  geom_smooth(method=lm, colour="red", linetype= "solid")+
+  labs(
+    x = "Scaled Ordinal Date",
+    y = "Scaled level of orange pigmentation",
+  ) +
+  theme_bw() 
+plot3
+
+plot4<- ggplot(butterfly_data_clean1, aes(x =scaled_2021_pop, (y = proportion_orange))) +
+  geom_jitter(size = 4, shape = 21, width = 0.05, height = 0.02) +
+  scale_fill_grey() +
+  geom_smooth(method=lm, colour="red", linetype= "dotted")+
+  labs(
+    x = "Scaled 2021 population",
+    y = "Scaled level of orange pigmentation",
+  ) +
+  theme_bw() 
+plot4
+
+
+plot5<- ggplot(butterfly_data_clean1, aes(x = scaled_distance_tree, (y =proportion_orange))) +
+  geom_jitter(size = 4, shape = 21, width = 0.05, height = 0.02) +
+  scale_fill_grey() +
+  geom_smooth(method=lm, colour="red", linetype= "dotted") +
+  labs(
+    x = "Scaled Distance to the nearest tree (m)",
+    y = "Scaled level of orange pigmentation",
+  ) +
+  theme_bw() 
+plot5
+
+##plot with offset
+plot6<- ggplot(butterfly_data_clean1, aes(x = scaled_pedestrians, (y = proportion_orange))) +
+  geom_jitter(size = 4, shape = 21, width = 0.05, height = 0.02)  +
+  scale_fill_grey() +
+  geom_smooth(method=lm, colour="red", linetype= "solid") +
+  labs(
+    x = "Scaled Pedestrians Observed",
+    y = "Scaled level of orange pigmentation",
+  ) +
+  theme_bw() 
+plot6
+
+
+
+# Combine  plots into  layout, change dimensions before exportin
+library(patchwork)
+combined_plot <- (plot1 | plot2 ) /
+  (plot3 | plot4 ) /
+  (plot5 | plot6)
+  (ncol = 2)
+combined_plot
+
+
+##predict function
+#Compute means for the other variables
+means <- colMeans(butterfly_data_clean1[, c("scaled_pop_density", "scaled_ordinal", "scaled_2021_pop", 
+                                            "scaled_distance_tree")], na.rm = TRUE)
+
+#  Create new data for low, medium, high predictions 
+low_sd <- -2
+high_sd <- 2
+medium_sd <- 0
+
+new_data <- data.frame(
+  scaled_distances = c(low_sd, medium_sd, high_sd),
+  scaled_pedestrians = c(low_sd, medium_sd, high_sd),
+  scaled_pop_density = rep(means["scaled_pop_density"], 3),
+  scaled_ordinal = rep(means["scaled_ordinal"], 3), #fix
+  scaled_2021_pop = rep(means["scaled_2021_pop"], 3),
+  scaled_distance_tree = rep(means["scaled_distance_tree"], 3),
+   park_number = rep(NA, 3)  
+)
+
+#  Make predictions using the model
+predictions <- predict(beta_orange3_scaled, newdata = new_data, type = "response")
+
+# Add the predicted values to the new data
+new_data$predicted_proportion_orange <- predictions
+
+new_data$classification <- cut(new_data$predicted_proportion_orange, 
+                               breaks = c(-Inf, 0.33, 0.66, Inf), 
+                               labels = c("low", "medium", "high"))
+print(new_data)
+
+
+## predict 
+library(ggeffects)
+library(dplyr)
+
+# Predict across range of each scaled variables from previous
+pred_scaled_dist <- ggpredict(beta_orange3_scaled, terms = "scaled_distances [all]")
+pred_scaled_pop_density <- ggpredict(beta_orange3_scaled, terms = "scaled_pop_density [all]")
+pred_scaled_ordinal <- ggpredict(beta_orange3_scaled, terms = "scaled_ordinal [all]")
+pred_scaled_2021_pop <- ggpredict(beta_orange3_scaled, terms = "scaled_2021_pop [all]")
+pred_scaled_tree <- ggpredict(beta_orange3_scaled, terms = "scaled_distance_tree [all]")
+pred_scaled_ped <- ggpredict(beta_orange3_scaled, terms = "scaled_pedestrians [all]")
+
+
+# Function to filter predictions around intermediate values (0.39–0.80)
+filter_intermediate <- function(pred_df) {
+  pred_df %>% filter(predicted > 0.4 & predicted < 0.80)
+}
+
+#  filter for intermediates
+intermediate_dist <- filter_intermediate(pred_scaled_dist)
+intermediate_pop_density <- filter_intermediate(pred_scaled_pop_density)
+intermediate_ordinal <- filter_intermediate(pred_scaled_ordinal)
+intermediate_2021_pop <- filter_intermediate(pred_scaled_2021_pop)
+intermediate_tree <- filter_intermediate(pred_scaled_tree)
+intermediate_ped <- filter_intermediate(pred_scaled_ped)
+
+
+print("Scaled Distance to Road (intermediate colour):")
+print(intermediate_dist, n=Inf)
+
+print(" Scaled Population Density (intermediate colour):")
+print(intermediate_pop_density, n=Inf)
+
+print("Scaled Ordinal Date (intermediate colour):")
+print(intermediate_ordinal, n=Inf)
+
+print("Scaled 2021 Population (intermediate colour):")
+print(intermediate_2021_pop)
+
+print("Scaled Distance to Nearest Tree (intermediate colour):")
+print(intermediate_tree)
+
+print("Scaled Pedestrians Observed (intermediate colour):")
+print(intermediate_ped, n=Inf)
+
+
+# Now  unscale to view original numbers for each variable
+unscale <- function(scaled_values, scaled_vector) {
+  mean_val <- attr(scaled_vector, "scaled:center")
+  sd_val <- attr(scaled_vector, "scaled:scale")
+  return(scaled_values * sd_val + mean_val)
+}
+#for #4.0-4.9
+scaled_vals_dist <- c(-1.62, -1.62, -1.57, -1.57,-1.57,-1.56,-1.43,-1.42,-1.41,-1.40,-1.30,-1.21,-1.18,-1.10,-1.05,-1.04,-0.96,-0.96,-0.90,-0.90,-0.83,-0.66,-0.54,-0.39)
+original_distances <- unscale(scaled_vals_dist, butterfly_data_clean1$scaled_distances)
+original_distances
+original_distances_avg <- mean(original_distances)
+original_distances_avg 
+
+scaled_vals_pedestrians <- c(0.36,0.56,0.76,0.96)
+original_ped <- unscale(scaled_vals_pedestrians, butterfly_data_clean1$scaled_pedestrians)
+original_ped
+mean(original_ped)
+
+scaled_vals_date <- c(-0.89,-0.84,-0.45)
+original_date <- unscale(scaled_vals_date, butterfly_data_clean1$scaled_ordinal)
+original_date
+original_date_avg <- mean(original_date)
+original_date_avg 
+
+##for 6.0-6.9
+scaled_vals_distorange <- c(1.51,1.62,1.66)
+original_distancesorange <- unscale(scaled_vals_distorange, butterfly_data_clean1$scaled_distances)
+original_distancesorange
+original_distances_avgorange <- mean(original_distancesorange)
+original_distances_avgorange
+
+
+scaled_vals_date <- c(0.80)
+original_date <- unscale(scaled_vals_date, butterfly_data_clean1$scaled_ordinal)
+original_date
+original_date_avg <- mean(original_date)
+original_date_avg 
