@@ -69,7 +69,7 @@ name2<- eurytheme_datasheet$id
 lat2<- eurytheme_datasheet$latitude
 long2<- eurytheme_datasheet$longitude
 
-#trial
+
 mydf2eurythemeinat <- data.frame(site_name = (name2),
                     from_lat = (lat2),
                     from_long = (long2),
@@ -80,7 +80,7 @@ pls <- lapply(1:nrow(mydf2eurythemeinat), function(x){
   
   foo <- google_directions(origin = unlist(mydf2eurythemeinat[x, 2:3]),
                            destination = unlist(mydf2eurythemeinat[x, 4:5]),
-                           key = "AIzaSyBZ_1FGIIoQlBgotsT-hJ5nZwMYcmL6GHE",
+                           key = "",  #insert API key here
                            mode = "driving",
                            simplify = TRUE)
   
