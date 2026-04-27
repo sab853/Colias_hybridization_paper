@@ -30,7 +30,7 @@ pls <- lapply(1:nrow(mydf1philodiceinat), function(x){
   
   foo <- google_directions(origin = unlist(mydf1philodiceinat[x, 2:3]),
                            destination = unlist(mydf1philodiceinat[x, 4:5]),
-                           key = "", #insert API here
+                           key = "", #insert API key here
                            mode = "driving",
                            simplify = TRUE)
   
